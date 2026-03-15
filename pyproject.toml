@@ -1,0 +1,20 @@
+[project]
+name = "nonmem-mcp-server"
+version = "0.1.0"
+description = "MCP server for NONMEM pharmacometric modeling workflows"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=1.26.0",
+    "pydantic>=2.12.5",
+]
+
+[project.scripts]
+nonmem-mcp = "nonmem_mcp.__main__:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nonmem_mcp"]
