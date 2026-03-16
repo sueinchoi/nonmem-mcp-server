@@ -8,3 +8,44 @@ wheels/
 
 # Virtual environments
 .venv
+
+# macOS
+.DS_Store
+
+# NONMEM output files
+*.lst
+*.ext
+*.phi
+*.shm
+*.shk
+*.grd
+*.cov
+*.cor
+*.coi
+*.clt
+*.cpu
+*.xml
+FCON
+FDATA
+FDATA.csv
+FMSG
+FREPORT
+FSIZES
+FSTREAM
+FSUBS
+FSUBS.f90
+FSUBS2
+INTER
+LINK.LNK
+LINKC.LNK
+PRSIZES.f90
+compile.lnk
+gfortran.txt
+nmprd4p.mod
+nonmem
+PRDERR
+temp_dir/
+sdtab*
+
+# R output
+*.png
