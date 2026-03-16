@@ -50,13 +50,19 @@ class NmJob:
 # ---------------------------------------------------------------------------
 
 COMMON_NMFE_PATHS = [
+    "/opt/nm760/run/nmfe76",
+    "/opt/NONMEM/nm760/run/nmfe76",
+    "/opt/NONMEM/nm76/run/nmfe76",
     "/opt/NONMEM/nm75/run/nmfe75",
     "/opt/NONMEM/nm74/run/nmfe74",
     "/opt/NONMEM/nm75gf/run/nmfe75",
+    "/opt/nm76/run/nmfe76",
     "/opt/nm75/run/nmfe75",
     "/opt/nm74/run/nmfe74",
+    "/usr/local/NONMEM/nm76/run/nmfe76",
     "/usr/local/NONMEM/nm75/run/nmfe75",
     "/usr/local/NONMEM/nm74/run/nmfe74",
+    os.path.expanduser("~/NONMEM/nm76/run/nmfe76"),
     os.path.expanduser("~/NONMEM/nm75/run/nmfe75"),
     os.path.expanduser("~/NONMEM/nm74/run/nmfe74"),
 ]
@@ -71,13 +77,13 @@ def detect_nmfe() -> str | None:
 
     env_install = os.environ.get("NONMEM_INSTALL_PATH")
     if env_install:
-        for version in ["75", "74", "73"]:
+        for version in ["76", "75", "74", "73"]:
             candidate = Path(env_install) / f"run/nmfe{version}"
             if candidate.exists():
                 return str(candidate)
 
     # Check PATH
-    for version in ["75", "74", "73"]:
+    for version in ["76", "75", "74", "73"]:
         path = shutil.which(f"nmfe{version}")
         if path:
             return path
