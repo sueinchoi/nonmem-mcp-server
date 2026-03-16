@@ -17,10 +17,15 @@ import re
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from nonmem_mcp.parsers.control_stream_parser import parse_control_stream
 from nonmem_mcp.types.nonmem import ControlStream
+
+
+def _r_path(p: str | Path) -> str:
+    """Convert a file path to R-compatible format (forward slashes)."""
+    return str(p).replace("\\", "/")
 
 
 # ---------------------------------------------------------------------------
@@ -588,13 +593,13 @@ def _build_sim_r_script(
         "library(dplyr)",
         f"set.seed({seed})",
         "",
-        f'mod <- mread_cache("model", "{Path(model_path).parent}", "{Path(model_path).name}")',
+        f'mod <- mread_cache("model", "{_r_path(Path(model_path).parent)}", "{Path(model_path).name}")',
         "",
     ]
 
     if data_path:
         lines.extend([
-            f'data <- read.csv("{data_path}")',
+            f'data <- read.csv("{_r_path(data_path)}")',
             "out <- mod %>%",
             "  data_set(data) %>%",
             "  mrgsim()",
@@ -615,7 +620,7 @@ def _build_sim_r_script(
     lines.extend([
         "",
         "result <- as.data.frame(out)",
-        f'write.csv(result, "{output_path}", row.names = FALSE)',
+        f'write.csv(result, "{_r_path(output_path)}", row.names = FALSE)',
         'cat("Simulation complete.\\n")',
         f'cat("Rows:", nrow(result), "\\n")',
         f'cat("Columns:", paste(names(result), collapse=", "), "\\n")',
@@ -744,8 +749,8 @@ def _build_vpc_r_script(
         "library(jsonlite)",
         f"set.seed({seed})",
         "",
-        f'mod <- mread_cache("model", "{Path(model_path).parent}", "{Path(model_path).name}")',
-        f'obs <- read.csv("{observed_data_path}")',
+        f'mod <- mread_cache("model", "{_r_path(Path(model_path).parent)}", "{Path(model_path).name}")',
+        f'obs <- read.csv("{_r_path(observed_data_path)}")',
         "",
         "# Run simulations",
         f"sim_all <- lapply(1:{n_sim}, function(i) {{",
@@ -757,7 +762,7 @@ def _build_vpc_r_script(
         "  return(out)",
         "})",
         "sim_data <- bind_rows(sim_all)",
-        f'write.csv(sim_data, "{vpc_csv_path}", row.names = FALSE)',
+        f'write.csv(sim_data, "{_r_path(vpc_csv_path)}", row.names = FALSE)',
         "",
         "# Generate VPC statistics",
         "tryCatch({",
@@ -779,7 +784,7 @@ def _build_vpc_r_script(
         f"    n_sim = {n_sim},",
         f"    pred_corr = {'TRUE' if pred_corr else 'FALSE'}",
         "  )",
-        f'  write(toJSON(vpc_stats, auto_unbox = TRUE), "{vpc_json_path}")',
+        f'  write(toJSON(vpc_stats, auto_unbox = TRUE), "{_r_path(vpc_json_path)}")',
         '  cat("VPC statistics generated successfully.\\n")',
         "}, error = function(e) {",
         '  cat("VPC stats error:", conditionMessage(e), "\\n")',

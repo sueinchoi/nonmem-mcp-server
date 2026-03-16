@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -21,6 +22,8 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+IS_WINDOWS = platform.system() == "Windows"
 
 from nonmem_mcp.parsers.ext_parser import format_ext_result, parse_ext_file
 from nonmem_mcp.parsers.lst_parser import format_lst_result, parse_lst_file
@@ -49,27 +52,57 @@ class NmJob:
 # NONMEM path detection
 # ---------------------------------------------------------------------------
 
-COMMON_NMFE_PATHS = [
-    "/opt/nm760/run/nmfe76",
-    "/opt/NONMEM/nm760/run/nmfe76",
-    "/opt/NONMEM/nm76/run/nmfe76",
-    "/opt/NONMEM/nm75/run/nmfe75",
-    "/opt/NONMEM/nm74/run/nmfe74",
-    "/opt/NONMEM/nm75gf/run/nmfe75",
-    "/opt/nm76/run/nmfe76",
-    "/opt/nm75/run/nmfe75",
-    "/opt/nm74/run/nmfe74",
-    "/usr/local/NONMEM/nm76/run/nmfe76",
-    "/usr/local/NONMEM/nm75/run/nmfe75",
-    "/usr/local/NONMEM/nm74/run/nmfe74",
-    os.path.expanduser("~/NONMEM/nm76/run/nmfe76"),
-    os.path.expanduser("~/NONMEM/nm75/run/nmfe75"),
-    os.path.expanduser("~/NONMEM/nm74/run/nmfe74"),
-]
+def _build_common_nmfe_paths() -> list[str]:
+    """Build platform-specific list of common NONMEM installation paths."""
+    paths: list[str] = []
+    versions = ["76", "75", "74"]
+    ext = ".bat" if IS_WINDOWS else ""
+
+    if IS_WINDOWS:
+        # Windows common install locations
+        for drive in ["C:", "D:"]:
+            for base in [
+                f"{drive}\\nm760\\run",
+                f"{drive}\\NONMEM\\nm760\\run",
+                f"{drive}\\nm76\\run",
+                f"{drive}\\nm75\\run",
+                f"{drive}\\nm74\\run",
+                f"{drive}\\NONMEM\\nm76\\run",
+                f"{drive}\\NONMEM\\nm75\\run",
+                f"{drive}\\NONMEM\\nm74\\run",
+                f"{drive}\\Program Files\\NONMEM\\nm76\\run",
+                f"{drive}\\Program Files\\NONMEM\\nm75\\run",
+                f"{drive}\\Program Files\\NONMEM\\nm74\\run",
+            ]:
+                for v in versions:
+                    paths.append(f"{base}\\nmfe{v}{ext}")
+    else:
+        # Unix/macOS common install locations
+        for v in versions:
+            paths.extend([
+                f"/opt/nm760/run/nmfe{v}",
+                f"/opt/NONMEM/nm760/run/nmfe{v}",
+                f"/opt/NONMEM/nm{v}/run/nmfe{v}",
+                f"/opt/nm{v}/run/nmfe{v}",
+                f"/usr/local/NONMEM/nm{v}/run/nmfe{v}",
+            ])
+        # ADVAN-style with gf suffix
+        paths.append("/opt/NONMEM/nm75gf/run/nmfe75")
+
+    # Home directory (cross-platform)
+    for v in versions:
+        paths.append(os.path.expanduser(f"~/NONMEM/nm{v}/run/nmfe{v}{ext}"))
+
+    return paths
+
+
+COMMON_NMFE_PATHS = _build_common_nmfe_paths()
 
 
 def detect_nmfe() -> str | None:
     """Auto-detect nmfe executable path."""
+    ext = ".bat" if IS_WINDOWS else ""
+
     # Check environment variable first
     env_path = os.environ.get("NONMEM_NMFE_PATH")
     if env_path and Path(env_path).exists():
@@ -78,11 +111,11 @@ def detect_nmfe() -> str | None:
     env_install = os.environ.get("NONMEM_INSTALL_PATH")
     if env_install:
         for version in ["76", "75", "74", "73"]:
-            candidate = Path(env_install) / f"run/nmfe{version}"
+            candidate = Path(env_install) / f"run/nmfe{version}{ext}"
             if candidate.exists():
                 return str(candidate)
 
-    # Check PATH
+    # Check PATH (shutil.which handles .bat/.exe on Windows automatically)
     for version in ["76", "75", "74", "73"]:
         path = shutil.which(f"nmfe{version}")
         if path:
@@ -94,6 +127,48 @@ def detect_nmfe() -> str | None:
             return path
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Cross-platform process utilities
+# ---------------------------------------------------------------------------
+
+def _is_process_alive(pid: int) -> bool:
+    """Check if a process is still running (cross-platform)."""
+    if IS_WINDOWS:
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return str(pid) in result.stdout
+        except Exception:
+            return False
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # Process exists but we can't signal it
+
+
+def _terminate_process(pid: int) -> None:
+    """Terminate a process (cross-platform)."""
+    if IS_WINDOWS:
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True, timeout=10,
+        )
+    else:
+        os.kill(pid, signal.SIGTERM)
+        time.sleep(1)
+        try:
+            os.kill(pid, 0)
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -186,14 +261,9 @@ def check_run_status(job_id: str) -> dict:
     if job.status == "running":
         # Check if process is still alive
         if job.pid:
-            try:
-                os.kill(job.pid, 0)  # Signal 0 = check existence
-            except ProcessLookupError:
-                # Process finished
+            if not _is_process_alive(job.pid):
                 job.status = "completed"
                 job.finished_at = time.time()
-            except PermissionError:
-                pass  # Process exists but we can't signal it
 
         # Check .ext file for progress
         ext_path = Path(job.work_dir) / f"{job.run_name}.ext"
@@ -293,19 +363,13 @@ def cancel_run(job_id: str) -> dict:
 
     if job.pid:
         try:
-            os.kill(job.pid, signal.SIGTERM)
-            time.sleep(1)
-            try:
-                os.kill(job.pid, 0)
-                os.kill(job.pid, signal.SIGKILL)  # Force kill if still alive
-            except ProcessLookupError:
-                pass
+            _terminate_process(job.pid)
             job.status = "cancelled"
             job.finished_at = time.time()
             return {"message": f"Job {job_id} cancelled", "pid": job.pid}
         except ProcessLookupError:
             job.status = "completed"
-            return {"message": f"Process already finished"}
+            return {"message": "Process already finished"}
         except Exception as e:
             return {"error": f"Failed to cancel: {e}"}
 

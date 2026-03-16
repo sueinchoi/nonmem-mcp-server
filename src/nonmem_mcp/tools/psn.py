@@ -14,12 +14,15 @@ from __future__ import annotations
 
 import csv
 import os
+import platform
 import shutil
 import subprocess
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+
+IS_WINDOWS = platform.system() == "Windows"
 
 # Reuse job registry pattern from execute module
 _psn_jobs: dict[str, "PsnJob"] = {}
@@ -46,12 +49,24 @@ class PsnJob:
 # PsN detection
 # ---------------------------------------------------------------------------
 
-COMMON_PSN_PATHS = [
-    "/usr/local/bin",
-    "/opt/PsN/bin",
-    os.path.expanduser("~/PsN/bin"),
-    "/usr/bin",
-]
+def _build_common_psn_paths() -> list[str]:
+    """Build platform-specific list of common PsN installation paths."""
+    if IS_WINDOWS:
+        return [
+            os.path.expanduser("~/PsN/bin"),
+            "C:\\PsN\\bin",
+            "C:\\strawberry\\perl\\bin",
+            "C:\\Program Files\\PsN\\bin",
+        ]
+    return [
+        "/usr/local/bin",
+        "/opt/PsN/bin",
+        os.path.expanduser("~/PsN/bin"),
+        "/usr/bin",
+    ]
+
+
+COMMON_PSN_PATHS = _build_common_psn_paths()
 
 
 def detect_psn() -> dict[str, str | None]:
@@ -246,9 +261,8 @@ def check_psn_status(job_id: str) -> dict:
     }
 
     if job.status == "running" and job.pid:
-        try:
-            os.kill(job.pid, 0)
-        except ProcessLookupError:
+        from nonmem_mcp.tools.execute import _is_process_alive
+        if not _is_process_alive(job.pid):
             job.status = "completed"
             job.finished_at = time.time()
 
@@ -259,7 +273,7 @@ def check_psn_status(job_id: str) -> dict:
             )
             if raw_results:
                 try:
-                    with open(raw_results) as f:
+                    with open(raw_results, newline="") as f:
                         reader = csv.reader(f)
                         next(reader, None)  # skip header
                         job.completed_samples = sum(1 for _ in reader)
@@ -401,7 +415,7 @@ def _parse_bootstrap_results(csv_path: Path) -> dict:
     """Parse PsN bootstrap_results.csv."""
     result: dict = {"file": str(csv_path), "parameters": {}}
     try:
-        with open(csv_path) as f:
+        with open(csv_path, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 param = row.get("parameter", row.get("", ""))
@@ -427,7 +441,7 @@ def _parse_raw_results(csv_path: Path) -> dict:
     result: dict = {"file": str(csv_path)}
     try:
         rows = []
-        with open(csv_path) as f:
+        with open(csv_path, newline="") as f:
             reader = csv.DictReader(f)
             headers = reader.fieldnames or []
             for row in reader:
@@ -461,7 +475,7 @@ def _parse_vpc_results(csv_path: Path) -> dict:
     result: dict = {"file": str(csv_path)}
     try:
         rows = []
-        with open(csv_path) as f:
+        with open(csv_path, newline="") as f:
             reader = csv.DictReader(f)
             headers = reader.fieldnames or []
             for row in reader:
