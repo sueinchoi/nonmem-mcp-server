@@ -2,9 +2,11 @@
 
 MCP (Model Context Protocol) server for NONMEM pharmacometric modeling workflows. Gives Claude (and any MCP-compatible client) structured access to NONMEM models, results, and simulation tools.
 
+Supports **Windows**, **macOS**, and **Linux**.
+
 ## Features
 
-### Phase 1: Parsing & Analysis (no NONMEM needed)
+### Parsing & Analysis (no NONMEM needed)
 - **`read_ext_file`** — Parse .ext files for parameter estimates, SEs, OFV, condition number
 - **`read_lst_file`** — Extract termination status, shrinkage, covariance step results
 - **`parse_control_stream`** — Structural parsing of .ctl/.mod files (THETAs, OMEGAs, $EST options)
@@ -14,7 +16,7 @@ MCP (Model Context Protocol) server for NONMEM pharmacometric modeling workflows
 - **`summarize_run`** — Combined .ctl + .ext + .lst summary
 - **`list_runs`** — Scan project directories for NONMEM runs
 
-### Phase 2: Execution & Diagnostics
+### Execution & Diagnostics
 - **`submit_run`** — Start NONMEM runs (async, fire-and-poll pattern)
 - **`check_run_status`** — Monitor iteration progress via .ext file
 - **`get_run_results`** — Retrieve parsed results when complete
@@ -26,7 +28,7 @@ MCP (Model Context Protocol) server for NONMEM pharmacometric modeling workflows
 - **`parse_psn_results`** — Parse existing PsN output directories (no installation needed)
 - **`check_nonmem_setup`** — Detect NONMEM, PsN, R installation status
 
-### Phase 3: Simulation (no NONMEM needed)
+### Simulation (no NONMEM needed)
 - **`translate_to_mrgsolve`** — Convert NONMEM .ctl/.mod to mrgsolve model code
 - **`simulate_mrgsolve`** — Run PK simulations via mrgsolve (R)
 - **`generate_vpc_data`** — Generate VPC data using mrgsolve + vpc R package
@@ -45,11 +47,13 @@ MCP (Model Context Protocol) server for NONMEM pharmacometric modeling workflows
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
 ### Optional
-- **NONMEM** — Required for `submit_run` (commercial license)
+- **NONMEM 7.3–7.6** — Required for `submit_run` (commercial license)
 - **PsN** — Required for `execute_psn_vpc`, `execute_psn_bootstrap`
-- **R** with `mrgsolve`, `vpc`, `dplyr` — Required for simulation tools
+- **R** with `mrgsolve`, `vpc`, `dplyr`, `ggplot2` — Required for simulation and GOF tools
 
 ## Installation
+
+### Using uv (recommended)
 
 ```bash
 git clone https://github.com/sueinchoi/nonmem-mcp-server.git
@@ -57,22 +61,76 @@ cd nonmem-mcp-server
 uv sync
 ```
 
+### Using pip
+
+```bash
+pip install git+https://github.com/sueinchoi/nonmem-mcp-server.git
+```
+
+Or for development:
+
+```bash
+git clone https://github.com/sueinchoi/nonmem-mcp-server.git
+cd nonmem-mcp-server
+pip install -e .
+```
+
+## NONMEM Path Configuration
+
+The server auto-detects NONMEM from common install locations. If auto-detection fails, set one of these environment variables:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `NONMEM_NMFE_PATH` | Full path to nmfe executable | `/opt/nm760/run/nmfe76` |
+| `NONMEM_INSTALL_PATH` | NONMEM installation root | `/opt/nm760` |
+
+### Auto-detected paths
+
+**macOS / Linux:**
+- `/opt/nm760/run/nmfe76`, `/opt/NONMEM/nm75/run/nmfe75`, etc.
+- `/usr/local/NONMEM/nm76/run/nmfe76`
+- `~/NONMEM/nm76/run/nmfe76`
+
+**Windows:**
+- `C:\nm760\run\nmfe76.bat`, `C:\NONMEM\nm76\run\nmfe76.bat`
+- `C:\Program Files\NONMEM\nm76\run\nmfe76.bat`
+- `D:\NONMEM\nm76\run\nmfe76.bat`
+
 ## Usage with Claude Code
+
+### Basic (no NONMEM)
+
+```bash
+claude mcp add nonmem -- nonmem-mcp
+```
+
+### With uv (from source)
 
 ```bash
 claude mcp add -s user nonmem -- \
   uv run --directory /path/to/nonmem-mcp-server python -m nonmem_mcp
 ```
 
-With NONMEM installed:
+### With NONMEM path
+
 ```bash
+# macOS / Linux
 claude mcp add -s user \
-  -e NONMEM_NMFE_PATH=/opt/NONMEM/nm75/run/nmfe75 \
+  -e NONMEM_NMFE_PATH=/opt/nm760/run/nmfe76 \
   nonmem -- \
   uv run --directory /path/to/nonmem-mcp-server python -m nonmem_mcp
 ```
 
-Verify:
+```powershell
+# Windows (PowerShell)
+claude mcp add -s user `
+  -e NONMEM_NMFE_PATH=C:\nm760\run\nmfe76.bat `
+  nonmem -- `
+  uv run --directory C:\path\to\nonmem-mcp-server python -m nonmem_mcp
+```
+
+### Verify
+
 ```bash
 claude mcp list
 # nonmem: ... - ✓ Connected
@@ -82,6 +140,8 @@ claude mcp list
 
 Add to `claude_desktop_config.json`:
 
+### macOS / Linux
+
 ```json
 {
   "mcpServers": {
@@ -89,7 +149,23 @@ Add to `claude_desktop_config.json`:
       "command": "uv",
       "args": ["run", "--directory", "/path/to/nonmem-mcp-server", "python", "-m", "nonmem_mcp"],
       "env": {
-        "NONMEM_NMFE_PATH": "/opt/NONMEM/nm75/run/nmfe75"
+        "NONMEM_NMFE_PATH": "/opt/nm760/run/nmfe76"
+      }
+    }
+  }
+}
+```
+
+### Windows
+
+```json
+{
+  "mcpServers": {
+    "nonmem": {
+      "command": "uv",
+      "args": ["run", "--directory", "C:\\path\\to\\nonmem-mcp-server", "python", "-m", "nonmem_mcp"],
+      "env": {
+        "NONMEM_NMFE_PATH": "C:\\nm760\\run\\nmfe76.bat"
       }
     }
   }
@@ -108,8 +184,14 @@ Add to `claude_desktop_config.json`:
 # Diagnose a failed run
 "Why did this run fail? Check /path/to/run.lst"
 
+# Systematic model development
+"Develop a 2-compartment model with forward IIV addition"
+
 # Translate to mrgsolve for simulation
 "Convert my NONMEM model to mrgsolve and run a VPC"
+
+# GOF plots
+"Generate GOF plots for run015 with IPRED and CWRES"
 ```
 
 ## Capability Matrix
@@ -125,6 +207,18 @@ Add to `claude_desktop_config.json`:
 | PsN VPC | ✗ | ✗ | ✓ |
 | PsN Bootstrap | ✗ | ✗ | ✓ |
 | Parse PsN results | ✓ | ✓ | ✓ |
+
+## Included Examples
+
+The `examples/theopp/` directory contains a complete model development workflow using the Theophylline dataset:
+
+- **run001.ctl** — 1-compartment base model (ADVAN2, FO)
+- **run002.ctl** — 2-compartment model (ADVAN4 TRANS4)
+- **run003–005.ctl** — 2-comp base models with different initial estimates (no IIV)
+- **run006–010.ctl** — Single IIV forward addition (CL, V2, Q, V3, KA)
+- **run011–014.ctl** — Double IIV forward addition (V2+CL, V2+KA, V2+Q, V2+V3)
+- **run015.ctl** — Final 1-comp model with FOCE+INTER, IPRED, CWRES
+- **gof_plot_v2.R** — GOF plotting script (DV vs PRED/IPRED, CWRES, QQ plot)
 
 ## License
 
